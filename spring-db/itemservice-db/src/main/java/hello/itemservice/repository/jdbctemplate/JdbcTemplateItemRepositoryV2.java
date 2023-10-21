@@ -1,0 +1,129 @@
+package hello.itemservice.repository.jdbctemplate;
+
+import hello.itemservice.domain.Item;
+import hello.itemservice.repository.ItemRepository;
+import hello.itemservice.repository.ItemSearchCond;
+import hello.itemservice.repository.ItemUpdateDto;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.EmptyResultDataAccessException;
+import org.springframework.jdbc.core.BeanPropertyRowMapper;
+import org.springframework.jdbc.core.RowMapper;
+import org.springframework.jdbc.core.namedparam.BeanPropertySqlParameterSource;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
+import org.springframework.jdbc.support.GeneratedKeyHolder;
+import org.springframework.jdbc.support.KeyHolder;
+import org.springframework.util.StringUtils;
+
+import javax.sql.DataSource;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+/**
+ * NamedParameterJdbcTemplate
+ * SqlParameterSource
+ * - BeanPropertySqlParameterSource
+ * - MapSqlParameterSource
+ * Map
+ *
+ * BeanPropertyRowMapper
+ *
+ * V2는 쿼리의 순서가 변경되어도 상관없다.
+ */
+@Slf4j
+public class JdbcTemplateItemRepositoryV2 implements ItemRepository {
+
+    // private final JdbcTemplate template;
+    private final NamedParameterJdbcTemplate template;
+
+    public JdbcTemplateItemRepositoryV2(DataSource dataSource) {
+        this.template = new NamedParameterJdbcTemplate(dataSource);
+    }
+
+    @Override
+    public Item save(Item item) {
+        String sql = "insert into item(item_name, price, quantity)" +
+                "values (:itemName, :price, :quantity)";
+
+        BeanPropertySqlParameterSource param = new BeanPropertySqlParameterSource(item);
+
+        KeyHolder keyHolder = new GeneratedKeyHolder();
+        template.update(sql, param, keyHolder);
+
+        long key = keyHolder.getKey().longValue();
+        item.setId(key);
+
+        return item;
+    }
+
+    @Override
+    public void update(Long itemId, ItemUpdateDto updateParam) {
+        String sql = "update item " +
+                "set item_name=:itemName, price=:price, quantity=:quantity "+
+                "where id=:id";
+
+        MapSqlParameterSource param = new MapSqlParameterSource()
+                .addValue("itemName", updateParam.getItemName())
+                .addValue("price", updateParam.getPrice())
+                .addValue("quantity", updateParam.getQuantity())
+                .addValue("id", itemId); // 이 부분은 별도로 필요하다.
+        // MapSqlParameterSource나 MaP으로 바인딩을 한다.
+        // 위에서 쓴거는 그냥 바인딩하는 도구라고 생각
+
+        // BeanPropertySqlParameterSource를 사용하지 못하는 이유 :
+        // ItemUpdateDto에 id는 없고 name, price, quantity만 있어서 별도로 바인딩을 다 해줘야함.
+
+        template.update(sql, param);
+    }
+
+    @Override
+    public Optional<Item> findById(Long id) {
+        String sql = "select id, item_name, price, quantity from item where id = :id";
+        try {
+            Map<String, Long> param = Map.of("id", id);
+            Item item = template.queryForObject(sql, param, itemRowMapper());
+            // 객체를 하나 뽑는 메서드
+            return Optional.of(item);
+        } catch (EmptyResultDataAccessException e) {
+            return Optional.empty();
+        }
+    }
+
+    @Override
+    public List<Item> findAll(ItemSearchCond cond) {
+        String itemName = cond.getItemName();
+        Integer maxPrice = cond.getMaxPrice();
+
+        BeanPropertySqlParameterSource param = new BeanPropertySqlParameterSource(cond);
+
+        String sql = "select id, item_name, price, quantity from item";
+
+        // 동적 쿼리
+        if (StringUtils.hasText(itemName) || maxPrice != null) {
+            sql += " where"; }
+
+        boolean andFlag = false;
+        if (StringUtils.hasText(itemName)) {
+            sql += " item_name like concat('%',:itemName,'%')";
+            andFlag = true;
+        }
+
+        if (maxPrice != null) {
+            if (andFlag) {
+                sql += " and";
+            }
+            sql += " price <= :maxPrice";
+        }
+
+        log.info("sql={}", sql);
+
+        return template.query(sql, param, itemRowMapper());
+        // queryForObject는 객체 하나 가져올 때, query는 list를 가져올 때
+    }
+
+    private RowMapper<Item> itemRowMapper() {
+       return BeanPropertyRowMapper.newInstance(Item.class); // camel 변환 지원
+        // item_name을 itemName으로 자동 교체해줌
+    }
+}
