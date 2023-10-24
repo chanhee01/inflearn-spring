@@ -1,0 +1,21 @@
+spring:
+  profiles:
+    active: local
+  datasource:
+    url: jdbc:h2:tcp://localhost/~/querydsl
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: create # 애플리케이션 로딩 시점에 새로운 table을 생성
+    properties:
+      hibernate:
+        # show_sql: true
+        format_sql: true # 쿼리가 한줄로 나오는게 아니라 정렬해서 예쁘게 나옴
+        use_sql_comments: # querydsl 사용시 jpql 출력해주는 것
+
+logging.level:
+  org.hibernate.SQL: debug # sql을 로그로 남겨줌
+  org.hibernate.type: trace
